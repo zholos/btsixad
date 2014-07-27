@@ -1,0 +1,147 @@
+.Dd July 27, 2014
+.Dt BTSIXAD 8
+.Os
+.
+.Sh NAME
+.Nm btsixad
+.Nd Driver for Sixaxis gamepad connected over Bluetooth
+.
+.Sh SYNOPSIS
+.Nm
+.Op Fl a Ar bdaddr
+.Op Fl d
+.Op Fl t Ar timeout
+.
+.Sh DESCRIPTION
+The
+.Nm
+daemon allows the PlayStation 3 Sixaxis gamepad to be used wirelessly over
+Bluetooth. When a gamepad is connected, the daemon creates a virtual USB HID
+device named
+.Pa btsixa* .
+This can be symlinked to
+.Pa uhid*
+and used like an ordinary USB joystick or gamepad by SDL and other programs.
+.Pp
+The options are:
+.Bl -tag -width indent
+.It Fl a Ar bdaddr
+Listen on a specific Bluetooth address.
+.It Fl d
+Run in the foreground. This will print incoming connection details and Bluetooth
+HID control messages exchanged. Specify
+.Fl d
+twice to also print interrupt messages
+.Pq current state of controls
+and specify
+.Fl d
+three times to make the gamepad keep sending interrupt messages even if the
+device is not in use.
+.It Fl t Ar timeout
+Disconnect the device if it is not accessed for
+.Ar timeout
+seconds.
+.El
+.
+.Sh SETTING UP
+Refer to the FreeBSD handbook for a guide on setting up Bluetooth. The gamepad
+initiates the connection, so the host has to be connectable, but need not be
+discoverable. The following options in
+.Pa /etc/defaults/bluetooth.device.conf
+are appropriate:
+.Pp
+.Bd -literal -offset indent
+authentication_enable="NO"
+connectable="YES"
+discoverable="NO"
+local_name=""
+.Ed
+.Pp
+The gamepad uses a nonstandard Bluetooth pairing procedure. When it is plugged
+in over USB, the Bluetooth address of the host is set with a special USB
+request. The
+.Nm
+.Sy rc.d
+script handles this automatically.
+.Pp
+The following options can be set in
+.Pa /etc/rc.conf :
+.
+.Bl -tag -width indent
+.It Fa btsixad_enable
+Whether the daemon and automatic USB operations are enabled.
+.It Fa btsixad_pair
+Whether to pair gamepads connected over USB automatically. All currently
+connected gamepads can be paired manually with
+.Pp
+.Dl service btsixad pair
+.It Fa btsixad_bdaddr
+The host address used for pairing the gamepad. Set this if you have multiple
+Bluetooth dongles, otherwise a default address is determined by
+.Pp
+.Dl hccontrol read_bd_addr
+.It Fa btsixad_flags
+Additional flags to pass to the daemon, e.g.\&
+.Fl t Ar 3600 .
+.It Fa btsixad_uhid_min=0 No and Fa btsixad_uhid_max=15
+Symlink
+.Pa uhid*
+devices in this range of unit numbers. SDL 1 only checks
+.Pa uhid0
+to
+.Pa uhid3 ,
+SDL 2 checks
+.Pa uhid0
+to
+.Pa uhid15 .
+If a real
+.Sy uhid
+device is attached with the same number as a symlink, the real device will be
+obscured, so it may be useful to increase the minimum unit number.
+.
+.Sh THE GAMEPAD
+The PS button
+.Pq the round button in the center of the gamepad
+initiates a connection. When it is pressed, all four LEDs start blinking while a
+connection is established. When connected, one of the LEDs corresponding to the
+device unit number either lights up continuously when the device is in use or
+flashes briefly when it is not. Holding the PS button for 10 seconds
+disconnects.
+.Pp
+A connection should be established before starting any games because SDL
+enumerates joysticks on startup.
+.Pp
+The daemon presents a custom HID descriptor to applications and slightly alters
+the input report to make the controller more useful without additional
+configuration. Buttons are numbered in the sequence: Square, X, Circle,
+Triangle, R1, L1, R3, L3
+.Pq analog stick clicks ,
+Start, Select, PS. The D-pad is reported as a hat switch. The two analog sticks
+and the R2 and L2 triggers are reported as axes. None of the pressure or motion
+sensors are mapped.
+.
+.Sh SECURITY CONSIDERATIONS
+Since Bluetooth authentication is not supported, a rogue Bluetooth device
+pretending to be a gamepad can connect to the daemon and provide inputs.
+.Pp
+The inputs do not pass through the USB subsystem in the kernel, so there is no
+chance of, for instance, the keyboard driver binding to them. Furthermore, the
+way in which they are interpreted by programs is limited by the hardcoded HID
+descriptor provided by the daemon
+.Pq and not by the device
+to gaming controls and generic buttons.
+.Pp
+Nevertheless, care should be taken with programs that translate such inputs into
+keyboard or mouse events.
+.
+.Sh SEE ALSO
+.Xr bthidd 8 ,
+.Xr usbhidaction 1 ,
+.Xr uhid 4 ,
+.Xr cuse4bsd 3
+.
+.Sh AUTHORS
+.An -nosplit
+.Nm
+was written by
+.An Andrey Zholos Aq aaz@q-fu.com

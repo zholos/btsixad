@@ -1,0 +1,24 @@
+notify 100 {
+    match "system" "DEVFS";
+    match "subsystem" "CDEV";
+    match "type" "CREATE";
+    match "cdev" "btsixa[0-9]+";
+    action "%%PREFIX%%/etc/rc.d/btsixad attach $cdev";
+};
+
+notify 100 {
+    match "system" "DEVFS";
+    match "subsystem" "CDEV";
+    match "type" "DESTROY";
+    match "cdev" "btsixa[0-9]+";
+    action "%%PREFIX%%/etc/rc.d/btsixad detach $cdev";
+};
+
+notify 100 {
+    match "system" "USB";
+    match "subsystem" "DEVICE";
+    match "type" "ATTACH";
+    match "vendor" "0x054c";
+    match "product" "0x0268";
+    action "%%PREFIX%%/etc/rc.d/btsixad pair $cdev";
+};

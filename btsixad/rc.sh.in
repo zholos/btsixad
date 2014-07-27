@@ -1,0 +1,114 @@
+#!/bin/sh
+
+# PROVIDE: btsixad
+# REQUIRE: DAEMON bluetooth
+# BEFORE: LOGIN
+# KEYWORD: nojail
+
+. /etc/rc.subr
+
+name=btsixad
+rcvar=btsixad_enable
+command=%%PREFIX%%/sbin/$name
+start_cmd=do_start
+extra_commands="attach detach pair"
+attach_cmd=do_attach
+detach_cmd=do_detach
+pair_cmd=do_pair
+required_modules=cuse4bsd~'\bcuse4bsd\b' # kldstat -m cuse4bsd doesn't work
+
+load_rc_config $name
+
+: ${btsixad_enable:=NO}
+: ${btsixad_bdaddr:=}
+: ${btsixad_flags:=}
+: ${btsixad_uhid_min:=0}
+: ${btsixad_uhid_max:=15}
+: ${btsixad_pair:=NO}
+: ${btsixad_usb_operational:=NO}
+
+if [ -n "$btsixad_bdaddr" ]; then
+    if ! expr ":$btsixad_bdaddr" : '\(:[0-9a-fA-F]\{2\}\)\{6\}$' >/dev/null
+    then
+        echo '$btsixad_bdaddr is not set properly' |
+            logger -st $name -p user.warn
+        btsixad_bdaddr=
+    fi
+fi
+
+do_start()
+{
+    "$command" ${btsixad_bdaddr:+-a $btsixad_bdaddr} ${btsixad_flags} "$@"
+}
+
+do_attach()
+{
+    [ -n "$1" ] || return
+    local i
+    for i in `seq "$btsixad_uhid_min" 1 "$btsixad_uhid_max"`; do
+        ln -s "$1" /dev/uhid$i 2>/dev/null && break
+    done
+}
+
+do_detach()
+{
+    [ -n "$1" ] || return
+    local d
+    for d in /dev/uhid[0-9]*; do
+        [ "`readlink "$d"`" = "$1" ] && rm "$d"
+    done
+}
+
+do_pair()
+{
+    local d a w r vp
+    if [ -n "$1" ]; then
+        d=${1##*/}
+        if checkyesno btsixad_pair; then
+            a=$btsixad_bdaddr
+            if [ -z "$a" ]; then
+                a=`hccontrol read_bd_addr | awk '$1=="BD_ADDR:"{print $2;exit}'`
+            fi
+            w=`echo "0x01 0x00:$a" | sed 's/:/ 0x/g'`
+            r=`usbconfig -d "$d" do_request 0xa1 1 0x03f5 0 8 |
+                sed 's/^REQUEST = <//;s/>.*//;q'`
+            if [ -z "$a" ]; then
+                echo "can't pair $d: Bluetooth host address not found" |
+                    logger -st $name -p user.warn
+            elif [ "$r" = "$w" ]; then
+                echo "$d already paired with $a" |
+                    logger -st $name -p user.notice
+            elif usbconfig -d "$d" do_request 0x21 9 0x03f5 0 8 $w |
+                    grep -q '^REQUEST = <OK>'; then
+                echo "$d paired with $a" | logger -st $name -p user.notice
+            else
+                echo "failed to pair $d" | logger -st $name -p user.warn
+            fi
+        fi
+
+        if checkyesno btsixad_usb_operational; then
+            # While here, enable input reporting over USB so the gamepad can be
+            # used when plugged in.
+            if :; then
+                # After this, pressing the "PS" button enables reporting.
+                # Useful if Bluetooth isn't working.
+                usbconfig -d "$d" do_request 0xa1 1 0x03f2 0 17 >/dev/null
+            else
+                # After this, reporting starts immediately, but stops over
+                # Bluetooth. This would interfere with any game in progress if
+                # the gamepad is plugged in to charge.
+                usbconfig -d "$d" do_request 0x21 9 0x03f4 0 4 0x42 2 0 0 \
+                    >/dev/null
+            fi
+            echo "$d operational over USB" | logger -st $name -p user.debug
+        fi
+    else
+        for d in /dev/ugen[0-9]*; do
+            vp=`usbconfig -d "${d##*/}" dump_device_desc | awk \
+                '$2=="="{v[$1]=$3}END{print v["idVendor"]":"v["idProduct"]}'`
+            [ "$vp" = 0x054c:0x0268 ] && btsixad_pair=YES do_pair "$d"
+        done
+    fi
+}
+
+run_rc_command "$@"
