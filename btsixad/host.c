@@ -54,7 +54,7 @@ listen_init(int ctrl)
     if (lfd[ctrl] == -1)
         err(1, "socket() failed");
 
-    struct sockaddr_l2cap sa;
+    struct sockaddr_l2cap sa = { 0 };
     sa.l2cap_len = sizeof sa;
     sa.l2cap_family = AF_BLUETOOTH;
     sa.l2cap_psm = ctrl ? 0x11 // HID_Control

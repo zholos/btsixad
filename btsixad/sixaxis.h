@@ -3,7 +3,7 @@
 
 #include "device.h"
 
-struct descr sixaxis_descr;
+extern struct descr sixaxis_descr;
 
 void sixaxis_operational(struct device* d, int operational);
 void sixaxis_leds(struct device* d, int bitmap, int blink);

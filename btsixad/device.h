@@ -1,6 +1,7 @@
 #ifndef BTSIXAD_DEVICE_H
 #define BTSIXAD_DEVICE_H
 
+#define L2CAP_SOCKET_CHECKED
 #include <bluetooth.h>
 
 // Protocol limit is 0xffff
